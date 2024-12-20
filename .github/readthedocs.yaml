@@ -1,0 +1,68 @@
+name: Publish Docs
+
+on:
+  push:
+    branches: [ main ] # Trigger workflow on push to the main branch
+  release:
+    types: [ created ] # Trigger workflow on release creation
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    name: Build and Publish Docs
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the repository
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          persist-credentials: false
+
+      # Step 2: Setup Conda environment
+      - name: Setup Conda
+        uses: s-weigand/setup-conda@v1
+        with:
+          python-version: 3.9 # You can adjust this version as needed
+          conda-channels: conda-forge
+
+      # Step 3: Install dependencies and build documentation
+      - name: Install and Build Docs
+        shell: bash
+        run: |
+          # Setup Conda environment
+          conda config --prepend channels conda-forge
+          conda config --set channel_priority strict
+          conda create -n docs python=3.9 sphinx sphinx-rtd-theme sphinx-click myst-nb nbsphinx numba tqdm -y
+          source activate docs
+
+          # Install additional project-specific dependencies
+          python -m pip install -e .[doc]
+
+          # Build the documentation
+          sphinx-build -b html docs/source docs/_build
+
+      # Step 4: Deploy documentation to GitHub Pages
+      - name: Deploy to GitHub Pages (Release)
+        uses: JamesIves/github-pages-deploy-action@v4
+        if: ${{ github.event_name == 'release' }}
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: gh-pages
+          folder: docs/_build
+          clean: false
+          target-folder: ${{ github.ref }} # Deploy to folder named after the release tag
+
+      - name: Deploy to GitHub Pages (Push)
+        uses: JamesIves/github-pages-deploy-action@v4
+        if: ${{ github.event_name == 'push' }}
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: gh-pages
+          folder: docs/_build
+          clean: false
+          target-folder: latest # Deploy to the "latest" folder
+
